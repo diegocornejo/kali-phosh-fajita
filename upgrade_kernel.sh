@@ -39,6 +39,17 @@ cd "$WORKDIR"
 
 echo "==> Pulling active kernel command line from system..."
 CMDLINE=$(cat /proc/cmdline)
+
+# 1. Strip all 'androidboot.*' arguments (the bootloader dynamically adds these anyway, they shouldn't be baked in)
+CMDLINE=$(echo "$CMDLINE" | sed 's/androidboot\.[^ ]*//g')
+
+# 2. Remove duplicate 'dr_mode=host' strings if they got stacked up
+CMDLINE=$(echo "$CMDLINE" | sed 's/dr_mode=host//g')
+CMDLINE="$CMDLINE dr_mode=host"
+
+# 3. Clean up extra spaces to save characters
+CMDLINE=$(echo "$CMDLINE" | tr -s ' ' | sed 's/^ *//;s/ *$//')
+
 PAGESIZE="4096"
 HEADER_VERSION="2"
 
