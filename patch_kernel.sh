@@ -63,47 +63,42 @@ if [ ! -f "$NEW_KERNEL" ]; then
 fi
 
 echo "==> Gathering original boot image metadata dynamically..."
-MKBOOTIMG_ARGS="--kernel $NEW_KERNEL --ramdisk unpacked/boot.img-ramdisk.gz --cmdline $CMDLINE"
+# Use a Bash array to safely handle spaces in the CMDLINE variable
+MKBOOTIMG_ARGS=(
+    --kernel "$NEW_KERNEL"
+    --ramdisk "unpacked/boot.img-ramdisk.gz"
+    --cmdline "$CMDLINE"
+)
 
 # Add base and pagesize if they exist
 if [ -s "unpacked/boot.img-base" ]; then
-    MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS --base $(cat unpacked/boot.img-base)"
+    MKBOOTIMG_ARGS+=(--base "$(cat unpacked/boot.img-base)")
 fi
 if [ -s "unpacked/boot.img-pagesize" ]; then
-    MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS --pagesize $(cat unpacked/boot.img-pagesize)"
+    MKBOOTIMG_ARGS+=(--pagesize "$(cat unpacked/boot.img-pagesize)")
 fi
 if [ -s "unpacked/boot.img-osversion" ]; then
-    MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS --os_version $(cat unpacked/boot.img-osversion)"
+    MKBOOTIMG_ARGS+=(--os_version "$(cat unpacked/boot.img-osversion)")
 fi
 if [ -s "unpacked/boot.img-oslevel" ]; then
-    MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS --os_patch_level $(cat unpacked/boot.img-oslevel)"
+    MKBOOTIMG_ARGS+=(--os_patch_level "$(cat unpacked/boot.img-oslevel)")
 fi
 
 # Add offsets and header versions if they exist
 for arg in header_version kernel_offset ramdisk_offset tags_offset dtb_offset; do
     if [ -s "unpacked/boot.img-${arg}" ]; then
-        MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS --${arg} $(cat unpacked/boot.img-${arg})"
+        MKBOOTIMG_ARGS+=(--${arg} "$(cat unpacked/boot.img-${arg})")
     fi
 done
 
-# Add the DTB argument we preserved earlier
-MKBOOTIMG_ARGS="$MKBOOTIMG_ARGS $DTB_ARG"
+# Add the DTB argument we preserved earlier if it exists
+if [ -s "unpacked/boot.img-dtb" ]; then
+    MKBOOTIMG_ARGS+=(--dtb "unpacked/boot.img-dtb")
+fi
 
 echo "==> Repacking new_boot.img..."
-# Notice there are no quotes around $MKBOOTIMG_ARGS so bash expands it properly
-mkbootimg $MKBOOTIMG_ARGS -o new_boot.img
-
-echo "==> Success! Boot image created."
-
-# Automatically copy it to the user's home folder and fix permissions
-SUDO_USER_HOME=$(eval echo ~$SUDO_USER)
-cp new_boot.img "$SUDO_USER_HOME/patched_boot.img"
-chown $SUDO_USER:$SUDO_USER "$SUDO_USER_HOME/patched_boot.img"
-
-echo "--------------------------------------------------------"
-echo "A ready-to-flash copy has been saved to your home folder:"
-echo "   $SUDO_USER_HOME/patched_boot.img"
-echo "--------------------------------------------------------"
+# Expand the array properly with quotes to preserve spaces in cmdline
+mkbootimg "${MKBOOTIMG_ARGS[@]}" -o new_boot.img
 
 echo "==> Success! Boot image created."
 
