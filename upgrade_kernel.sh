@@ -1,5 +1,6 @@
 #!/bin/bash
 # upgrade_kernel.sh - Packages new kernel files into a boot.img with Host mode patched
+# Usage: sudo ./upgrade_kernel.sh [a|b|both]
 
 set -e
 
@@ -14,11 +15,23 @@ echo "==> Verifying new kernel and DTB files exist..."
 [ ! -f "$NEW_INITRD" ] && { echo "Error: Initramfs $NEW_INITRD not found"; exit 1; }
 [ ! -f "$NEW_DTB" ] && { echo "Error: DTB $NEW_DTB not found"; exit 1; }
 
-# Find active boot partition slot (a or b)
-SLOT=$(grep -o 'androidboot.slot_suffix=_[a-b]' /proc/cmdline | cut -d'_' -f2)
-[ -z "$SLOT" ] && { echo "Warning: Could not detect active slot. Defaulting to a."; SLOT="a"; }
-BOOT_PART="/dev/disk/by-partlabel/boot_$SLOT"
-[ ! -b "$BOOT_PART" ] && { echo "Error: Could not find $BOOT_PART"; exit 1; }
+# Determine which slot(s) to target based on argument or active slot detection
+USER_ARG="${1:-}"
+if [ -z "$USER_ARG" ]; then
+    DETECTED_SLOT=$(grep -o 'androidboot.slot_suffix=_[a-b]' /proc/cmdline | cut -d'_' -f2)
+    [ -z "$DETECTED_SLOT" ] && DETECTED_SLOT="a"
+    TARGET_SLOTS=("$DETECTED_SLOT")
+    echo "==> No slot specified. Defaulting to active slot: $DETECTED_SLOT"
+elif [ "$USER_ARG" = "both" ]; then
+    TARGET_SLOTS=("a" "b")
+    echo "==> Target set to BOTH slots (a and b)."
+elif [ "$USER_ARG" = "a" ] || [ "$USER_ARG" = "b" ]; then
+    TARGET_SLOTS=("$USER_ARG")
+    echo "==> Target explicitly set to slot: $USER_ARG"
+else
+    echo "Error: Invalid argument '$USER_ARG'. Use 'a', 'b', or 'both'."
+    exit 1
+fi
 
 WORKDIR=$(mktemp -d)
 echo "==> Working in temp directory: $WORKDIR"
@@ -50,11 +63,21 @@ mkbootimg --kernel "$NEW_KERNEL" \
 
 echo "==> SUCCESS! New boot image generated: $WORKDIR/new_boot.img"
 
-read -p "Do you want to flash it to $BOOT_PART right now? (y/n): " confirm
+# Build target partition list strings
+PART_LIST=""
+for s in "${TARGET_SLOTS[@]}"; do
+    PART_LIST="$PART_LIST /dev/disk/by-partlabel/boot_$s"
+done
+
+read -p "Do you want to flash it to target slot(s) ($USER_ARG) right now? (y/n): " confirm
 if [ "$confirm" = "y" ]; then
-    echo "==> Flashing..."
-    dd if=new_boot.img of="$BOOT_PART" bs=4M status=progress
-    echo "==> Done! You are ready to reboot."
+    for s in "${TARGET_SLOTS[@]}"; do
+        BOOT_PART="/dev/disk/by-partlabel/boot_$s"
+        [ ! -b "$BOOT_PART" ] && { echo "Error: Partition $BOOT_PART not found!"; exit 1; }
+        echo "==> Flashing to $BOOT_PART..."
+        dd if=new_boot.img of="$BOOT_PART" bs=4M status=progress
+    done
+    echo "==> Done! All target slots successfully updated. You are ready to reboot."
 else
-    echo "==> Skipping flash. File is at $WORKDIR/new_boot.img"
+    echo "==> Skipping flash. File is safely stored at $WORKDIR/new_boot.img"
 fi
