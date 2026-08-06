@@ -48,15 +48,10 @@ CMDLINE=$(echo "$CMDLINE" | tr -s ' ' | sed 's/^ *//;s/ *$//')
 
 echo "==> New cmdline length: ${#CMDLINE} (must be under 1535)"
 
-echo "==> Patching DTB for USB Host Mode..."
-if [ -f unpacked/boot.img-dtb ]; then
-    dtc -I dtb -O dts unpacked/boot.img-dtb -o devicetree.dts 2>/dev/null
-    sed -i 's/dr_mode = "peripheral"/dr_mode = "host"/g' devicetree.dts
-    sed -i 's/dr_mode = "otg"/dr_mode = "host"/g' devicetree.dts
-    dtc -I dts -O dtb devicetree.dts -o patched.dtb 2>/dev/null
-    DTB_ARG="--dtb patched.dtb"
+echo "==> Preserving original DTB..."
+if [ -s unpacked/boot.img-dtb ]; then
+    DTB_ARG="--dtb unpacked/boot.img-dtb"
 else
-    echo "Warning: No DTB found to patch."
     DTB_ARG=""
 fi
 
@@ -87,7 +82,7 @@ mkbootimg \
     $DTB_ARG \
     $EXTRA_ARGS \
     -o new_boot.img
-    
+
 echo "==> Success! Boot image created."
 
 # Automatically copy it to the user's home folder and fix permissions
