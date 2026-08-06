@@ -63,41 +63,27 @@ if [ ! -f "$NEW_KERNEL" ]; then
 fi
 
 echo "==> Gathering original boot image metadata dynamically..."
-# Use a Bash array to safely handle spaces in the CMDLINE variable
+# Use a Bash array to safely handle spaces in the CMDLINE
 MKBOOTIMG_ARGS=(
     --kernel "$NEW_KERNEL"
     --ramdisk "unpacked/boot.img-ramdisk.gz"
     --cmdline "$CMDLINE"
 )
 
-# Add base and pagesize if they exist
-if [ -s "unpacked/boot.img-base" ]; then
-    MKBOOTIMG_ARGS+=(--base "$(cat unpacked/boot.img-base)")
-fi
-if [ -s "unpacked/boot.img-pagesize" ]; then
-    MKBOOTIMG_ARGS+=(--pagesize "$(cat unpacked/boot.img-pagesize)")
-fi
-if [ -s "unpacked/boot.img-osversion" ]; then
-    MKBOOTIMG_ARGS+=(--os_version "$(cat unpacked/boot.img-osversion)")
-fi
-if [ -s "unpacked/boot.img-oslevel" ]; then
-    MKBOOTIMG_ARGS+=(--os_patch_level "$(cat unpacked/boot.img-oslevel)")
-fi
+# Safely add metadata ONLY if the tool extracted them
+[ -s "unpacked/boot.img-base" ] && MKBOOTIMG_ARGS+=(--base "$(cat unpacked/boot.img-base)")
+[ -s "unpacked/boot.img-pagesize" ] && MKBOOTIMG_ARGS+=(--pagesize "$(cat unpacked/boot.img-pagesize)")
+[ -s "unpacked/boot.img-osversion" ] && MKBOOTIMG_ARGS+=(--os_version "$(cat unpacked/boot.img-osversion)")
+[ -s "unpacked/boot.img-oslevel" ] && MKBOOTIMG_ARGS+=(--os_patch_level "$(cat unpacked/boot.img-oslevel)")
+[ -s "unpacked/boot.img-ramdisk_offset" ] && MKBOOTIMG_ARGS+=(--ramdisk_offset "$(cat unpacked/boot.img-ramdisk_offset)")
+[ -s "unpacked/boot.img-tags_offset" ] && MKBOOTIMG_ARGS+=(--tags_offset "$(cat unpacked/boot.img-tags_offset)")
 
-# Add offsets and header versions if they exist
-for arg in header_version kernel_offset ramdisk_offset tags_offset dtb_offset; do
-    if [ -s "unpacked/boot.img-${arg}" ]; then
-        MKBOOTIMG_ARGS+=(--${arg} "$(cat unpacked/boot.img-${arg})")
-    fi
-done
-
-# Add the DTB argument we preserved earlier if it exists
-if [ -s "unpacked/boot.img-dtb" ]; then
-    MKBOOTIMG_ARGS+=(--dtb "unpacked/boot.img-dtb")
+# CRITICAL: Add the Qualcomm Device Tree (this missing file is why the phone hung earlier!)
+if [ -s "unpacked/boot.img-dt" ]; then
+    MKBOOTIMG_ARGS+=(--dt "unpacked/boot.img-dt")
 fi
 
 echo "==> Repacking new_boot.img..."
-# Expand the array properly with quotes to preserve spaces in cmdline
 mkbootimg "${MKBOOTIMG_ARGS[@]}" -o new_boot.img
 
 echo "==> Success! Boot image created."
