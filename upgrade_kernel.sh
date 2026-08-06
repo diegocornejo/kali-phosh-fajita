@@ -3,21 +3,16 @@
 
 set -e
 
-# Target version (Must match what is in /boot/)
+# Target paths for Kali rolling release on OnePlus 6T
 KVER="6.12.37-qcom"
-NEW_KERNEL="/boot/vmlinuz-$KVER"
-NEW_INITRD="/boot/initrd.img-$KVER"
+NEW_KERNEL="/boot/vmlinuz-6.12-qcom"
+NEW_INITRD="/boot/initrd.img-6.12-qcom"
+NEW_DTB="/usr/lib/linux-image-6.12-qcom/qcom/sdm845-oneplus-fajita.dtb"
 
-echo "==> Verifying new kernel files exist..."
+echo "==> Verifying new kernel and DTB files exist..."
 [ ! -f "$NEW_KERNEL" ] && { echo "Error: Kernel $NEW_KERNEL not found"; exit 1; }
 [ ! -f "$NEW_INITRD" ] && { echo "Error: Initramfs $NEW_INITRD not found"; exit 1; }
-
-# Locate the DTB for the new kernel
-NEW_DTB=$(find /usr/lib/linux-image-$KVER -name "sdm845-oneplus-fajita.dtb" 2>/dev/null | head -n 1)
-if [ -z "$NEW_DTB" ]; then
-    NEW_DTB=$(find /boot/dtbs*/$KVER -name "sdm845-oneplus-fajita.dtb" 2>/dev/null | head -n 1)
-fi
-[ ! -f "$NEW_DTB" ] && { echo "Error: sdm845-oneplus-fajita.dtb not found for $KVER"; exit 1; }
+[ ! -f "$NEW_DTB" ] && { echo "Error: DTB $NEW_DTB not found"; exit 1; }
 
 # Find active boot partition slot (a or b)
 SLOT=$(grep -o 'androidboot.slot_suffix=_[a-b]' /proc/cmdline | cut -d'_' -f2)
@@ -29,19 +24,12 @@ WORKDIR=$(mktemp -d)
 echo "==> Working in temp directory: $WORKDIR"
 cd "$WORKDIR"
 
-echo "==> Backing up current running boot partition..."
-dd if="$BOOT_PART" of=current_boot.img bs=4M 2>/dev/null
+echo "==> Pulling active kernel command line from system..."
+CMDLINE=$(cat /proc/cmdline)
+PAGESIZE="4096"
+HEADER_VERSION="2"
 
-echo "==> Unpacking current boot.img to extract hardware parameters..."
-unpack_bootimg --boot_img current_boot.img --out extracted/ > /dev/null
-
-CMDLINE=$(cat extracted/cmdline)
-PAGESIZE=$(cat extracted/pagesize)
-OS_VER=$(cat extracted/os_version)
-OS_PATCH=$(cat extracted/os_patch_level)
-HEADER_VER=$(cat extracted/header_version)
-
-echo "==> Decompiling new 6.12.37 DTB..."
+echo "==> Decompiling new DTB..."
 dtc -I dtb -O dts -o fajita.dts "$NEW_DTB" 2>/dev/null
 
 echo "==> Patching DTB for USB Host Mode..."
@@ -51,14 +39,12 @@ sed -i 's/dr_mode = "otg";/dr_mode = "host";/g' fajita.dts
 echo "==> Recompiling patched DTB..."
 dtc -I dts -O dtb -o patched_fajita.dtb fajita.dts 2>/dev/null
 
-echo "==> Packing new boot.img with 6.12.37 kernel..."
+echo "==> Packing new boot.img with 6.12-qcom kernel and patched DTB..."
 mkbootimg --kernel "$NEW_KERNEL" \
           --ramdisk "$NEW_INITRD" \
           --dtb patched_fajita.dtb \
           --cmdline "$CMDLINE" \
-          --os_version "$OS_VER" \
-          --os_patch_level "$OS_PATCH" \
-          --header_version "$HEADER_VER" \
+          --header_version "$HEADER_VERSION" \
           --pagesize "$PAGESIZE" \
           -o new_boot.img
 
